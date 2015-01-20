@@ -14,7 +14,7 @@ from collections import namedtuple
 # arguments:   hg-log-file    username-to-keep
 parser = argparse.ArgumentParser(description='accepts required log info')
 parser.add_argument('sourcedir', help='source repository-controlled directory')
-parser.add_argument('targetdir', help='source repository-controlled directory')
+parser.add_argument('targetdir', help='desired target directory')
 parser.add_argument('--log', dest='logfilename', required=True, help='dump of hg log. assumed in reverse chron order')
 parser.add_argument('--user', dest='username', required=True, help='username whose commits to keep')
 parser.add_argument('--exclude', dest='excludeargs', nargs='*', required=False, help='list of files or dir.s to exclude from')
@@ -95,12 +95,14 @@ def changeDate(dateStr):
 # rsync --archive /mnt/usb1/docs/multiarb indepproj/
 # rsync -rlpgoD --exclude ".hg" ./ ../ha-bak17
 def copyDir():
-  baseArgs = ['rsync', '-rlptgoD', '--exclude', '".hg"']
+  baseArgs = ['rsync', '-rlptgoD', '--exclude', '.hg']
   for excludeArg in args.excludeargs:
     if excludeArg is not None:
       baseArgs.extend(['--exclude', excludeArg])
 
-  baseArgs.extend([sourceDir, targetDir])
+  # NOTE the '/' appended to sourceDir wound up being important
+  #   otherwise the directory itself was copied into target, increasing depth
+  baseArgs.extend([sourceDir+'/', targetDir])
   subprocess.check_call(baseArgs)
 
 def rollBack(commitName):
@@ -114,7 +116,7 @@ def reCommit(commitSummary):
   # make sure we're in the destination directory
   os.chdir(targetDir)
   subprocess.check_call(['git', 'add', '*'])
-  subprocess.check_call(['git', 'commit', '-m', commitSummary])
+  subprocess.call(['git', 'commit', '-m', commitSummary])
 
 #
 # Main routine section
@@ -135,5 +137,10 @@ for commit in logData:
   rollBack(commit['changeset'])
   changeDate(commit['date'])
   copyDir()
-  reCommit(commit['summary'])
+  # TODO generalize to more checks
+  if commit['user'] == args.username:
+    reCommit(commit['summary'])
+
+# reset time to normal
+subprocess.check_call(['sudo', 'hwclock', '-s'])
 
