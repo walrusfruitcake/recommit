@@ -9,6 +9,7 @@ from collections import namedtuple
 # Argument-handling section
 #
 
+# also TODO un-mandatory some flag opts
 # TODO ditch logfile requirement, call hg|git log from this code
 # ^don't forget to handle commit/changeset and summary/4spacetab format diff.s
 # arguments:   hg-log-file    username-to-keep
@@ -18,6 +19,8 @@ parser.add_argument('targetdir', help='desired target directory')
 parser.add_argument('--log', dest='logfilename', required=True, help='dump of hg log. assumed in reverse chron order')
 parser.add_argument('--user', dest='username', required=True, help='username whose commits to keep')
 parser.add_argument('--exclude', dest='excludeargs', nargs='*', required=False, help='list of files or dir.s to exclude from')
+# will set args.noinit True if flag set. False otherwise
+parser.add_argument('--noinit', action='store_true')
 
 args = parser.parse_args()
 #print(args.logfilename)
@@ -86,6 +89,15 @@ def getCommits(logfile):
   return logList
 
 
+# will init a git repo unless otherwise indicated when script called
+def gitInit():
+  if noinit:
+    return
+  # git init in the target dir. first 'cd'
+  os.chdir(targetDir)
+  subprocess.check_call(['git', 'init'])
+
+
 # unhandled exception possible (sudo)
 def changeDate(dateStr):
   # if this fails/returns nonzero, will raise an exception
@@ -105,18 +117,21 @@ def copyDir():
   baseArgs.extend([sourceDir+'/', targetDir])
   subprocess.check_call(baseArgs)
 
+
 def rollBack(commitName):
   # make sure we're in the starting directory
   os.chdir(sourceDir)
   # revert: all, no backup-with-.orig-renaming, specifying which revision
   subprocess.check_call(['hg', 'revert', '-a', '-C', '-r', commitName])
   
+
 # commit in the target directory
 def reCommit(commitSummary):
   # make sure we're in the destination directory
   os.chdir(targetDir)
   subprocess.check_call(['git', 'add', '*'])
   subprocess.call(['git', 'commit', '-m', commitSummary])
+
 
 #
 # Main routine section
@@ -125,10 +140,7 @@ def reCommit(commitSummary):
 logfile = open(args.logfilename, 'r')
 logData = getCommits(logfile)
  
-# TODO abstract away init to a function
-# git init in the target dir. first 'cd'
-os.chdir(targetDir)
-subprocess.check_call(['git', 'init'])
+# abstracted away init to a function
 
 # checkout starting w initial commit state, copy to target dir, and commit that
 logData.reverse()
