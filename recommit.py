@@ -14,11 +14,12 @@ from collections import namedtuple
 # ^don't forget to handle commit/changeset and summary/4spacetab format diff.s
 # arguments:   hg-log-file    username-to-keep
 parser = argparse.ArgumentParser(description='accepts required log info')
-parser.add_argument('sourcedir', help='source repository-controlled directory')
+parser.add_argument('sourcedir', help='repository-controlled source directory')
 parser.add_argument('targetdir', help='desired target directory')
 parser.add_argument('--log', dest='logfilename', required=True, help='dump of hg log. assumed in reverse chron order')
 parser.add_argument('--user', dest='username', required=True, help='username whose commits to keep')
-parser.add_argument('--exclude', dest='excludeargs', nargs='*', required=False, help='list of files or dir.s to exclude from')
+parser.add_argument('--exclude', dest='excludeargs', nargs='*', metavar='X', required=False, help='list of files or dir.s to exclude from')
+parser.add_argument('--type', dest='repotype', help='which version control system. "git" and "hg" are valid options. hg is the default')
 # will set args.noinit True if flag set. False otherwise
 parser.add_argument('--noinit', action='store_true')
 
@@ -28,6 +29,15 @@ args = parser.parse_args()
 # convert args relative paths to absolute
 sourceDir = os.path.abspath(args.sourcedir)
 targetDir = os.path.abspath(args.targetdir)
+
+# check what VCS selected
+validVCS = ('git', 'hg')
+
+if args.repotype not in validVCS:
+  #raise argparse.ArgumentError()
+  parser.error("check argument provided for --type")
+# else
+repoType = args.repotype
 
 #
 # Function-definition section
@@ -52,9 +62,13 @@ def getCommits(logfile):
     #label, content = (lambda i: lineList[i].split(':', maxsplit=1))(0,1)
     #print(label,content, sep='...',end='')
 
+    # TODO just use different dicts for different repo formats
     # git compatibility section
+    label = label.lower()
     if label == 'commit':
       label = 'changeset'
+    if label == 'author':
+      label = 'user'
     if line[:4] == '    ':
       content = line
       label = 'summary'
@@ -62,7 +76,7 @@ def getCommits(logfile):
     # a switch-case implementation replacement
     # date string .join is the way it is to cut off timezone offset
     evalLine = {
-      'changeset': (content.split(':', maxsplit=1)[0]),
+      'changeset': (content.split(':', maxsplit=1)[0].strip()),
       'user': (content.strip()),
       'date': (' '.join(content.split()[:-1]) ),
       'summary': (content.strip())
@@ -91,7 +105,7 @@ def getCommits(logfile):
 
 # will init a git repo unless otherwise indicated when script called
 def gitInit():
-  if noinit:
+  if args.noinit:
     return
   # git init in the target dir. first 'cd'
   os.chdir(targetDir)
@@ -107,7 +121,7 @@ def changeDate(dateStr):
 # rsync --archive /mnt/usb1/docs/multiarb indepproj/
 # rsync -rlpgoD --exclude ".hg" ./ ../ha-bak17
 def copyDir():
-  baseArgs = ['rsync', '-rlptgoD', '--exclude', '.hg']
+  baseArgs = ['rsync', '-rlptgoD', '--exclude', '.hg', '--exclude', '.git']
   for excludeArg in args.excludeargs:
     if excludeArg is not None:
       baseArgs.extend(['--exclude', excludeArg])
@@ -119,10 +133,18 @@ def copyDir():
 
 
 def rollBack(commitName):
+  setOriginArgs = {
+    'git': (['git', 'checkout']),
+    'hg': (['hg', 'revert', '-a', '-C', '-r'])
+  }[repoType]
+
+  repoArgs = setOriginArgs
+  repoArgs.append(commitName)
+
   # make sure we're in the starting directory
   os.chdir(sourceDir)
   # revert: all, no backup-with-.orig-renaming, specifying which revision
-  subprocess.check_call(['hg', 'revert', '-a', '-C', '-r', commitName])
+  subprocess.check_call(repoArgs)
   
 
 # commit in the target directory
@@ -141,6 +163,7 @@ logfile = open(args.logfilename, 'r')
 logData = getCommits(logfile)
  
 # abstracted away init to a function
+gitInit()
 
 # checkout starting w initial commit state, copy to target dir, and commit that
 logData.reverse()
