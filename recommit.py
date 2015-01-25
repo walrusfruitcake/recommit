@@ -122,8 +122,8 @@ def changeDate(dateStr):
 # rsync -rlpgoD --exclude ".hg" ./ ../ha-bak17
 def copyDir():
   baseArgs = ['rsync', '-rlptgoD', '--exclude', '.hg', '--exclude', '.git']
-  for excludeArg in args.excludeargs:
-    if excludeArg is not None:
+  if args.excludeargs is not None:
+    for excludeArg in args.excludeargs:
       baseArgs.extend(['--exclude', excludeArg])
 
   # NOTE the '/' appended to sourceDir wound up being important
